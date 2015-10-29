@@ -10,6 +10,8 @@ import threading
 
 from boto.s3.bucket import Bucket
 from boto.s3.connection import S3Connection
+import boto.s3.connection
+
 from boto.s3.key import Key
 from Queue import Queue
 
@@ -25,9 +27,9 @@ logger.addHandler(ch)
 
 
 class ProcessKeyQueue:
-    '''
+    """
     ProcessKeyQueue implements the queuing functions needed for s3concurrent upload/download.
-    '''
+    """
 
     def __init__(self):
         self.process_able_keys_queue = Queue()
@@ -37,30 +39,30 @@ class ProcessKeyQueue:
         self.queuing = False
 
     def enqueue_item(self, key, local_file_path, enqueue_count=1):
-        '''
+        """
         Enqueues an item to upload/download.
 
         :param key:                 s3 key to upload/download
         :param local_file_path:     local file path corresponding to the s3 key
         :param enqueue_count:       number of times this key has been enqueued
-        '''
+        """
         self.process_able_keys_queue.put((key, local_file_path, enqueue_count))
         self.enqueued_counter += 1
 
     def is_empty(self):
-        '''
+        """
         Checks if the queue is empty.
 
         :return:                (bool) true if the queue is empty
-        '''
+        """
         return self.process_able_keys_queue.empty()
 
     def de_queue_an_item(self):
-        '''
+        """
         De-queues an item from the queue.
 
         :return:                an item previously enqueued
-        '''
+        """
         value = None
 
         if not self.is_empty():
@@ -70,45 +72,45 @@ class ProcessKeyQueue:
         return value
 
     def is_queuing(self):
-        '''
+        """
         Checks if queuing all the process-able keys from S3.
 
         :return:                 True if still queuing
-        '''
+        """
         return self.queuing
 
     def queuing_stopped(self):
-        '''
+        """
         Stops the queuing from S3.
-        '''
+        """
         self.queuing = False
 
     def queuing_started(self):
-        '''
+        """
         Starts the queuing from S3.
-        '''
+        """
         self.queuing = True
 
 
 def enqueue_s3_keys_for_download(s3_bucket, prefix, destination_folder, queue):
-    '''
+    """
     En-queues S3 Keys to be downloaded.
 
     :param s3_bucket:               Boto Bucket object that contains the keys to be downloaded
     :param prefix:                  The path to the S3 folder to be downloaded. Example: bucket_root/folder_1
     :param destination_folder:      The relative or absolute path to the folder you wish to download to
     :param queue:                   A ProcessKeyQueue instance to enqueue all the keys in
-    '''
+    """
     bucket_list = s3_bucket.list(prefix=prefix)
 
     for key in bucket_list:
         # prepare local destination structure
-        destination = destination_folder + key.name.replace(prefix, '', 1) if prefix else ('/' + key.name)
+        destination = destination_folder + key.name.replace(prefix, '', 1) if prefix else (destination_folder + '/' + key.name)
         try:
             containing_dir = os.path.dirname(destination)
             if not os.path.exists(containing_dir):
                 os.makedirs(containing_dir)
-        
+
             # enqueue
             queue.enqueue_item(key, destination)
 
@@ -120,14 +122,14 @@ def enqueue_s3_keys_for_download(s3_bucket, prefix, destination_folder, queue):
 
 
 def enqueue_s3_keys_for_upload(s3_bucket, prefix, from_folder, queue):
-    '''
+    """
     En-queues S3 Keys to be uploaded.
 
     :param s3_bucket:               Boto Bucket object that contains the keys to be uploaded to
     :param prefix:                  The path to the S3 folder to be downloaded. Example: bucket_root/folder_1
     :param from_folder:             The relative or absolute path to the folder you wish to upload from
     :param queue:                   A ProcessKeyQueue instance to enqueue all the keys in
-    '''
+    """
     abs_from_folder_path = os.path.abspath(from_folder)
 
     for root, dirs, files in os.walk(abs_from_folder_path):
@@ -149,12 +151,12 @@ def enqueue_s3_keys_for_upload(s3_bucket, prefix, from_folder, queue):
 
 
 def is_sync_needed(key, local_file_path):
-    '''
+    """
     Checks if the local file is identical to the S3 key by using the file's md5 hash.
 
     :param key:                         The S3 key object.
     :param local_file_path:             (str), path to download the key to
-    '''
+    """
     sync_needed = True
     if os.path.exists(local_file_path) and key.exists():
         try:
@@ -168,19 +170,19 @@ def is_sync_needed(key, local_file_path):
         except:
             logger.exception(
                 'Cannot compare local file {0} against remote file {1}. s3concurrent will process it anyway.'
-                .format(local_file_path, key.name))
+                    .format(local_file_path, key.name))
 
     return sync_needed
 
 
 def process_a_key(queue, action, max_retry):
-    '''
+    """
     Process (download or upload) a S3 key from/to respective local path.
 
     :param queue:                   A ProcessKeyQueue instance to de-queue a key from
     :param action:                  download or upload
     :param max_retry:               The max times for s3concurrent to retry uploading/downloading a key
-    '''
+    """
     if not queue.is_empty():
         key, local_path, enqueue_count = queue.de_queue_an_item()
 
@@ -213,7 +215,7 @@ def process_a_key(queue, action, max_retry):
 
 
 def consume_queue(queue, action, thread_pool_size, max_retry):
-    '''
+    """
     Consumes the queue with the designated thread poll size by uploading/downloading the keys to
     their respective destinations.
 
@@ -221,7 +223,7 @@ def consume_queue(queue, action, thread_pool_size, max_retry):
     :param action:                  "download" or "upload"
     :param thread_pool_size:        The Designated thread pool size. (how many concurrent threads to process files.)
     :param max_retry:               The max times for s3concurrent to retry uploading/downloading a key
-    '''
+    """
     thread_pool = []
 
     while queue.is_queuing() or not queue.is_empty() or len(thread_pool) != 0:
@@ -239,8 +241,8 @@ def consume_queue(queue, action, thread_pool_size, max_retry):
     queue.all_processed = True
 
 
-def process_all(action, s3_key, s3_secret, bucket_name, prefix, local_folder, queue, thread_count, max_retry):
-    '''
+def process_all(action, s3_key, s3_secret, bucket_name, prefix, local_folder, queue, thread_count, max_retry, zone):
+    """
     Orchestrates the en-queuing and consuming threads in conducting:
     1. Local folder structure construction
     2. S3 key en-queuing
@@ -256,8 +258,13 @@ def process_all(action, s3_key, s3_secret, bucket_name, prefix, local_folder, qu
     :param thread_count:            The number of threads that you wish s3concurrent to use
     :param max_retry:               The max times for s3concurrent to retry uploading/downloading a key
     :return:                        True is all processed, false if interrupted in any way
-    '''
-    conn = S3Connection(s3_key, s3_secret)
+    """
+
+    # conn = S3Connection(s3_key, s3_secret)
+    S3Connection.DefaultHost = 's3' + zone + '.amazonaws.com'
+    conn = boto.s3.connect_to_region(zone, aws_access_key_id=s3_key, aws_secret_access_key=s3_secret,
+                                     is_secure=True, calling_format=boto.s3.connection.OrdinaryCallingFormat(), )
+
     bucket = Bucket(connection=conn, name=bucket_name)
 
     if action == 'download':
@@ -287,18 +294,20 @@ def main(action, command_line_args):
     parser = argparse.ArgumentParser(prog='s3concurrent_{0}'.format(action))
     parser.add_argument('s3_key', help="Your S3 API Key")
     parser.add_argument('s3_secret', help="Your S3 secret Key")
-    parser.add_argument('bucket_name', help="Your S3 bucket name")
+    parser.add_argument('bucket_name', help="Your S3 bucket name (e.g. my.bucket")
     parser.add_argument('--prefix', default=None, help="Path to a folder in the S3 bucket (e.g. my/dest/folder/)".format(action))
     parser.add_argument('--local_folder', default='.', help="Path to a a local filesystem folder (e.g. /my/src/folder)".format(action))
     parser.add_argument('--thread_count', default=10, help="Number of concurrent files to upload/download")
     parser.add_argument('--max_retry', default=10, help="Max retries for uploading/downloading a file")
+    parser.add_argument('--zone', default='eu-west-1', help="AWS Zone. Defaults to eu-west-1")
 
     args = parser.parse_args(command_line_args)
 
     queue = ProcessKeyQueue()
 
     if args.s3_key and args.s3_secret and args.bucket_name:
-        process_all(action, args.s3_key, args.s3_secret, args.bucket_name, args.prefix, args.local_folder, queue, int(args.thread_count), int(args.max_retry))
+        process_all(action, args.s3_key, args.s3_secret, args.bucket_name, args.prefix, args.local_folder, queue,
+                    int(args.thread_count), int(args.max_retry), args.zone)
 
         if queue.all_processed:
             logger.info('All keys are {0}ed'.format(action))
@@ -314,3 +323,7 @@ def s3concurrent_download(command_line_args=None):
 
 def s3concurrent_upload(command_line_args=None):
     main('upload', command_line_args=command_line_args)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1], sys.argv[2:])
